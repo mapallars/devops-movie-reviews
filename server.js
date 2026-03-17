@@ -14,26 +14,26 @@ app.get("/", (req, res) => {
 });
 
 // Import routes
-require('./src/routes/auth.routes')(app);
-require('./src/routes/movie.routes')(app);
-require('./src/routes/review.routes')(app);
+require("./src/routes/auth.routes")(app);
+require("./src/routes/movie.routes")(app);
+require("./src/routes/review.routes")(app);
 
 // Sync database and create initial roles
 const Role = db.Role;
-db.sequelize.sync({ force: true }).then(() => {
-  console.log('Database synced. Seeding initial data...');
+db.sequelize.sync({ force: false }).then(() => {
+  console.log("Database synced. Seeding initial data...");
   initial();
 });
 
 function initial() {
   Role.create({
     id: 1,
-    name: "user"
+    name: "user",
   });
- 
+
   Role.create({
     id: 2,
-    name: "admin"
+    name: "admin",
   });
 }
 
@@ -41,6 +41,8 @@ function initial() {
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}.`);
-  console.log('To use the API, please ensure your PostgreSQL database is running and the .env file is configured correctly.');
-  console.log('You can register a user at POST /api/auth/signup.');
+  console.log(
+    "To use the API, please ensure your PostgreSQL database is running and the .env file is configured correctly.",
+  );
+  console.log("You can register a user at POST /api/auth/signup.");
 });
