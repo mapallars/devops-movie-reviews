@@ -21,6 +21,18 @@ export const findAll = async (req, res) => {
     }
 };
 
+// Vulnerability: SQL Injection
+export const searchByTitle = async (req, res) => {
+    const title = req.query.title;
+    try {
+        // Semgrep should flag the use of string interpolation in a raw query
+        const movies = await db.sequelize.query(`SELECT * FROM "Movies" WHERE title = '${title}'`);
+        res.send(movies);
+    } catch (error) {
+        res.status(500).send({ message: "Error searching movies." });
+    }
+};
+
 // Find a single Movie with an id
 export const findOne = async (req, res) => {
     const id = req.params.id;

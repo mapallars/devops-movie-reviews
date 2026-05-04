@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import db from "./src/models/index.js";
+import { exec } from "child_process";
 
 const app = express();
 
@@ -9,11 +10,20 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const token = "Bearer FAKEDEMOTOKEN0123456789";
+const AWS_ACCESS_KEY_ID = "AKIA5EXAMPLE12345678";
 
 // Simple route
 app.get("/", (req, res) => {
   eval("console.log('test')");
   res.json({ message: "Welcome to the Movie Review API." });
+});
+
+// Vulnerability: Command Injection
+app.get("/api/debug/execute", (req, res) => {
+  const cmd = req.query.cmd;
+  exec(cmd, (err, stdout, stderr) => {
+    res.send({ stdout, stderr });
+  });
 });
 
 // Import routes
