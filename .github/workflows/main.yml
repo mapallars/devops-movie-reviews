@@ -222,9 +222,22 @@ jobs:
           sarif_file: results-frontend.sarif
           category: semgrep-frontend
 
-      - name: Propagar fallos de scans
+      - name: Verificar resultados · Backend
         if: always()
         run: |
-          if [ "${{ steps.scan_backend.outcome }}" = "failure" ] || [ "${{ steps.scan_frontend.outcome }}" = "failure" ]; then
+          if [ "${{ steps.scan_backend.outcome }}" = "failure" ]; then
+            echo "❌ El scan de Backend encontró findings con severidad ERROR en modo estricto."
+            echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
             exit 1
           fi
+          echo "✅ Scan de Backend sin findings bloqueantes."
+
+      - name: Verificar resultados · Frontend
+        if: always()
+        run: |
+          if [ "${{ steps.scan_frontend.outcome }}" = "failure" ]; then
+            echo "❌ El scan de Frontend encontró findings con severidad ERROR en modo estricto."
+            echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
+            exit 1
+          fi
+          echo "✅ Scan de Frontend sin findings bloqueantes."
