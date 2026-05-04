@@ -124,6 +124,8 @@ jobs:
       #                    reales y fallar el step en modo estricto.
       # .semgrepignore   : Semgrep lo lee automáticamente desde $GITHUB_WORKSPACE.
       - name: Semgrep · Backend (/api)
+        id: scan_backend
+        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
@@ -161,6 +163,8 @@ jobs:
       # ── Semgrep Frontend (/app) ──────────────────────────────────────
       # Packs: p/ci · p/security-audit · p/secrets · p/javascript · p/react
       - name: Semgrep · Frontend (/app)
+        id: scan_frontend
+        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
@@ -202,6 +206,8 @@ jobs:
       # ── Publicar SARIF — siempre, incluso si los scans fallaron ──────
       # if: always() garantiza que el Security tab reciba los datos
       # independientemente del resultado de los steps de scan.
+      # El gate propaga los fallos que continue-on-error absorbió para
+      # que el job quede en rojo si algún scan falló en modo estricto.
       - name: Publicar SARIF Backend
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -215,3 +221,10 @@ jobs:
         with:
           sarif_file: results-frontend.sarif
           category: semgrep-frontend
+
+      - name: Propagar fallos de scans
+        if: always()
+        run: |
+          if [ "${{ steps.scan_backend.outcome }}" = "failure" ] || [ "${{ steps.scan_frontend.outcome }}" = "failure" ]; then
+            exit 1
+          fi
