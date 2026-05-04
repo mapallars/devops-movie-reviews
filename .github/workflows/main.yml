@@ -91,6 +91,15 @@ jobs:
 
           semgrep scan \
             --verbose \
+              --config <(cat <<'EOF'
+                rules:
+                  - id: no-eval-usage
+                    message: "Evita usar eval(), riesgo de RCE"
+                    severity: ERROR
+                    languages: [javascript, typescript]
+                    pattern: eval($X)
+                EOF
+                ) \
             --config=p/ci \
             --config=p/security-audit \
             --config=p/secrets \
