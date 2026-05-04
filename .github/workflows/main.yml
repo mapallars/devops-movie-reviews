@@ -90,6 +90,7 @@ jobs:
           fi
 
           semgrep scan \
+            --verbose \
             --config=p/ci \
             --config=p/security-audit \
             --config=p/secrets \
@@ -113,6 +114,7 @@ jobs:
           fi
 
           semgrep scan \
+            --verbose \
             --config=p/ci \
             --config=p/security-audit \
             --config=p/secrets \
