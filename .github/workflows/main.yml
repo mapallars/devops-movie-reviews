@@ -227,7 +227,6 @@ jobs:
       #                     Coloca el archivo en la raíz del repo.
       - name: Semgrep · Backend (/api)
         id: semgrep_backend
-        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
@@ -252,7 +251,6 @@ jobs:
       # Packs: p/ci · p/security-audit · p/secrets · p/javascript · p/react
       - name: Semgrep · Frontend (/app)
         id: semgrep_frontend
-        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
