@@ -1,7 +1,6 @@
 import db from '../models/index.js';
 const User = db.User;
 const Role = db.Role;
-import crypto from 'crypto';
 
 import jwt from 'jsonwebtoken';
 
@@ -69,17 +68,4 @@ export const signin = async (req, res) => {
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
-};
-
-// Vulnerability: Weak Cryptographic Algorithm
-export const legacyLogin = (req, res) => {
-  const { username, password } = req.body;
-  // Semgrep should flag the use of MD5
-  const hash = crypto.createHash('md5').update(password).digest('hex');
-  
-  res.send({ 
-    message: "Legacy login attempt",
-    username: username,
-    hash: hash
-  });
 };
