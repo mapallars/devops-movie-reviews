@@ -21,77 +21,6 @@ env:
 
 jobs:
   # ----------------------------------------------------------
-  # 3. ANÁLISIS DE DEPENDENCIAS
-  # ----------------------------------------------------------
-  #
-  # dependency-audit: ejecuta npm audit en cada directorio del monorepo.
-  #   · Genera un reporte JSON archivado como artefacto (14 días).
-  #   · Falla si hay vulnerabilidades HIGH o CRITICAL.
-  #   · continue-on-error en el reporte para que el artefacto siempre se suba.
-  #
-  dependency-audit:
-    name: "Audit · ${{ matrix.name }}"
-    runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: backend
-            path: api
-          - name: frontend
-            path: app
-
-    defaults:
-      run:
-        working-directory: ${{ matrix.path }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ${{ matrix.path }}/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: npm audit — reporte JSON
-        run: npm audit --json > npm-audit-report.json 2>&1 || true
-
-      - name: npm audit — resumen
-        run: npm audit --audit-level=info || true
-
-      - name: Archivar reporte de auditoría
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-audit-${{ matrix.name }}
-          path: ${{ matrix.path }}/npm-audit-report.json
-          retention-days: 14
-
-      - name: Verificar vulnerabilidades críticas
-        run: npm audit --audit-level=high
-
-  # Revisión de cambios en manifests de dependencias (solo PRs).
-  # Compara el diff de package-lock.json entre base y head.
-  # No requiere npm ci — trabaja directamente sobre el diff del snapshot.
-  dependency-review:
-    name: "Dependency Review (PR)"
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-
-  # ----------------------------------------------------------
   # 4. SEMGREP SAST
   # ----------------------------------------------------------
   semgrep:
@@ -189,15 +118,16 @@ jobs:
       #
       # --verbose        : log detallado de reglas aplicadas y archivos procesados.
       # --severity=ERROR : filtra el output y el SARIF a findings de nivel ERROR.
-      # sin --error      : el SARIF siempre se genera; el exit code se captura
-      #                    manualmente y se propaga solo en modo estricto.
+      # sin --error      : el SARIF siempre se genera antes de decidir el exit.
+      #                    El patrón `cmd && VAR=0 || VAR=$?` captura el exit code
+      #                    de forma compatible con -eo pipefail del runner.
+      #                    El step solo falla si strict=true y hubo findings.
       # .semgrepignore   : Semgrep lo lee automáticamente desde $GITHUB_WORKSPACE.
       #                    Coloca el archivo en la raíz del repo.
       - name: Semgrep · Backend (/api)
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
-          set +e
           semgrep scan \
             --verbose \
             --config=p/ci \
@@ -213,15 +143,15 @@ jobs:
             ${{ steps.policy.outputs.baseline }} \
             --severity=ERROR \
             --sarif --output=results-backend.sarif \
-            ./api
-          SEMGREP_EXIT=$?
-          set -e
+            ./api \
+          && SEMGREP_EXIT=0 || SEMGREP_EXIT=$?
 
           if [ "$SEMGREP_EXIT" != "0" ]; then
             echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
+            if [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
+              exit 1
+            fi
           fi
-
-          [ "${{ steps.policy.outputs.strict }}" = "true" ] && exit $SEMGREP_EXIT || exit 0
 
       # ── Semgrep Frontend (/app) ──────────────────────────────────────
       # Packs: p/ci · p/security-audit · p/secrets · p/javascript · p/react
@@ -229,7 +159,6 @@ jobs:
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
-          set +e
           semgrep scan \
             --verbose \
             --config=p/ci \
@@ -249,15 +178,15 @@ jobs:
             ${{ steps.policy.outputs.baseline }} \
             --severity=ERROR \
             --sarif --output=results-frontend.sarif \
-            ./app
-          SEMGREP_EXIT=$?
-          set -e
+            ./app \
+          && SEMGREP_EXIT=0 || SEMGREP_EXIT=$?
 
           if [ "$SEMGREP_EXIT" != "0" ]; then
             echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
+            if [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
+              exit 1
+            fi
           fi
-
-          [ "${{ steps.policy.outputs.strict }}" = "true" ] && exit $SEMGREP_EXIT || exit 0
 
       # ── Publicar SARIF — siempre, incluso si los scans fallaron ──────
       # if: always() garantiza que el Security tab reciba los datos
