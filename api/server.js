@@ -8,8 +8,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const password = "abcd1234EFGHIJKLM*()!@@#";
+
 // Simple route
 app.get("/", (req, res) => {
+  eval("console.log('test')");
   res.json({ message: "Welcome to the Movie Review API." });
 });
 
@@ -33,12 +36,12 @@ function initial() {
   Role.create({
     id: 1,
     name: "user",
-  }).catch(err => {});
+  }).catch(err => { });
 
   Role.create({
     id: 2,
     name: "admin",
-  }).catch(err => {});
+  }).catch(err => { });
 }
 
 // Set port and listen for requests
