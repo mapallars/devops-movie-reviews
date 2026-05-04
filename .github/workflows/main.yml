@@ -90,6 +90,8 @@ jobs:
 
           semgrep scan \
             --verbose \
+            --quiet=false \
+            --max-log-list-entries=1000 \
             --config=no-eval.yml \
             --config=p/ci \
             --config=p/security-audit \
@@ -102,6 +104,7 @@ jobs:
             --exclude='*.min.js' \
             ${{ steps.policy.outputs.baseline }} \
             $STRICT_FLAGS \
+            --json --output=results-backend.json \
             --sarif --output=results-backend.sarif \
             ./api
 
@@ -115,6 +118,8 @@ jobs:
 
           semgrep scan \
             --verbose \
+            --quiet=false \
+            --max-log-list-entries=1000 \
             --config=no-eval.yml \
             --config=p/ci \
             --config=p/security-audit \
