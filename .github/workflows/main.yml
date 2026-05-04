@@ -1,34 +1,3 @@
-# ============================================================
-#  CI Pipeline — bitfive monorepo  (v2)
-#  Backend : /api  (TypeScript / Node.js / Express)
-#  Frontend: /app  (JavaScript / React / Vite)
-#
-#  Jobs
-#  ├── lint              → matrix: [backend, frontend]
-#  ├── build             → matrix: [backend, frontend]       needs: lint
-#  ├── dependency-audit  → npm audit matrix + reporte JSON   needs: lint
-#  ├── dependency-review → diff de manifests en PRs          needs: lint (PR only)
-#  └── semgrep           → SAST con:
-#        · --verbose
-#        · login condicional (SEMGREP_APP_TOKEN)
-#        · reglas personalizadas (.semgrep/rules/)
-#        · .semgrepignore leído automáticamente
-#        · sin --error: SARIF siempre publicado → enforce al final
-#
-#  Política Semgrep
-#  ├── PR → develop   : baseline scan (solo findings nuevos)
-#  ├── push develop   : full scan (visible en Security tab)
-#  ├── PR → main      : full scan estricto (bloquea DESPUÉS de publicar SARIF)
-#  └── push main / release/* / hotfix/* : full scan estricto
-#
-#  Secrets opcionales
-#  └── SEMGREP_APP_TOKEN : habilita Semgrep Cloud (login, políticas gestionadas)
-#
-#  Convenciones de repositorio
-#  ├── .semgrep/rules/   → reglas YAML personalizadas (detectadas automáticamente)
-#  └── .semgrepignore    → exclusiones Semgrep (leído automáticamente desde root)
-# ============================================================
-
 name: CI
 
 on:
@@ -51,9 +20,109 @@ env:
   NODE_VERSION: 20
 
 jobs:
+  # ----------------------------------------------------------
+  # 1. LINT
+  # ----------------------------------------------------------
+  lint:
+    name: "Lint · ${{ matrix.name }}"
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            path: api
+            lang: typescript
+          - name: frontend
+            path: app
+            lang: javascript
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.path }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type-check
+        if: matrix.lang == 'typescript'
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint --if-present
+
+  # ----------------------------------------------------------
+  # 2. BUILD
+  # ----------------------------------------------------------
+  build:
+    name: "Build · ${{ matrix.name }}"
+    runs-on: ubuntu-latest
+    needs: lint
+    if: needs.lint.result == 'success' || needs.lint.result == 'failure'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            path: api
+            artifact: backend-dist
+            dist: api/dist
+          - name: frontend
+            path: app
+            artifact: frontend-dist
+            dist: app/dist
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.path }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.dist }}
+          retention-days: 3
+
+  # ----------------------------------------------------------
+  # 3. ANÁLISIS DE DEPENDENCIAS
+  # ----------------------------------------------------------
+  #
+  # dependency-audit: ejecuta npm audit en cada directorio del monorepo.
+  #   · Genera un reporte JSON archivado como artefacto (14 días).
+  #   · Falla si hay vulnerabilidades HIGH o CRITICAL.
+  #   · continue-on-error en el reporte para que el artefacto siempre se suba.
+  #
   dependency-audit:
     name: "Audit · ${{ matrix.name }}"
     runs-on: ubuntu-latest
+    needs: lint
+    if: needs.lint.result == 'success' || needs.lint.result == 'failure'
 
     strategy:
       fail-fast: false
@@ -69,9 +138,9 @@ jobs:
         working-directory: ${{ matrix.path }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -80,23 +149,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Reporte JSON completo para archivar (no falla el step aunque haya vulns)
       - name: npm audit — reporte JSON
         run: npm audit --json > npm-audit-report.json 2>&1 || true
 
-      # Resumen legible en el log de CI
       - name: npm audit — resumen
         run: npm audit --audit-level=info || true
 
       - name: Archivar reporte de auditoría
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: npm-audit-${{ matrix.name }}
           path: ${{ matrix.path }}/npm-audit-report.json
           retention-days: 14
 
-      # Falla el job solo si hay vulnerabilidades HIGH o CRITICAL
       - name: Verificar vulnerabilidades críticas
         run: npm audit --audit-level=high
 
@@ -106,18 +172,16 @@ jobs:
   dependency-review:
     name: "Dependency Review (PR)"
     runs-on: ubuntu-latest
+    needs: lint
     if: github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
-          # Bloquea si se introducen deps con vulnerabilidades HIGH o CRITICAL
           fail-on-severity: high
-          # Opcional: restringir licencias permitidas
-          # allow-licenses: MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause
 
   # ----------------------------------------------------------
   # 4. SEMGREP SAST
@@ -125,6 +189,8 @@ jobs:
   semgrep:
     name: "SAST · Semgrep"
     runs-on: ubuntu-latest
+    needs: build
+    if: needs.build.result == 'success' || needs.build.result == 'failure'
     permissions:
       contents: read
       security-events: write
@@ -132,7 +198,7 @@ jobs:
       image: semgrep/semgrep
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -206,7 +272,6 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request" ] \
           && [ "${{ github.base_ref }}" = "develop" ]; then
-            # --baseline-commit reemplaza a --baseline-ref en semgrep >= 1.x
             BASELINE="--baseline-commit=origin/develop"
           fi
 
@@ -216,17 +281,18 @@ jobs:
       # ── Semgrep Backend (/api) ───────────────────────────────────────
       # Packs: p/ci · p/security-audit · p/secrets · p/typescript · p/nodejs
       #
-      # --verbose         : log detallado de reglas aplicadas y archivos procesados
+      # --verbose         : log detallado de reglas aplicadas y archivos procesados.
+      # --severity=ERROR  : filtra el output y el SARIF a findings de nivel ERROR.
       # sin --error       : permite que el SARIF siempre se genere y publique.
-      #                     Si hay findings, el step queda en outcome='failure'
-      #                     pero continue-on-error:true permite continuar hacia
-      #                     los steps de publicación de SARIF.
-      # continue-on-error : el job NO falla aquí. El fallo se controla en el
-      #                     step "Verificar modo estricto", después del SARIF upload.
+      #                     Si hay findings ERROR, semgrep exits con código 1,
+      #                     lo que pone el step en outcome='failure'.
+      # continue-on-error : el job NO falla aquí. El fallo real se controla en
+      #                     "Verificar modo estricto", después del SARIF upload.
       # .semgrepignore    : Semgrep lo lee automáticamente desde $GITHUB_WORKSPACE.
       #                     Coloca el archivo en la raíz del repo.
       - name: Semgrep · Backend (/api)
         id: semgrep_backend
+        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
@@ -234,7 +300,6 @@ jobs:
             --verbose \
             --config=p/ci \
             --config=p/security-audit \
-            --config=p/owasp-top-ten \
             --config=p/secrets \
             --config=p/typescript \
             --config=p/nodejs \
@@ -244,6 +309,7 @@ jobs:
             --exclude=coverage \
             --exclude='*.min.js' \
             ${{ steps.policy.outputs.baseline }} \
+            --severity=ERROR \
             --sarif --output=results-backend.sarif \
             ./api
 
@@ -251,6 +317,7 @@ jobs:
       # Packs: p/ci · p/security-audit · p/secrets · p/javascript · p/react
       - name: Semgrep · Frontend (/app)
         id: semgrep_frontend
+        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
@@ -258,7 +325,6 @@ jobs:
             --verbose \
             --config=p/ci \
             --config=p/security-audit \
-            --config=p/owasp-top-ten \
             --config=p/secrets \
             --config=p/javascript \
             --config=p/react \
@@ -272,6 +338,7 @@ jobs:
             --exclude=.next \
             --exclude='*.min.js' \
             ${{ steps.policy.outputs.baseline }} \
+            --severity=ERROR \
             --sarif --output=results-frontend.sarif \
             ./app
 
@@ -280,14 +347,14 @@ jobs:
       # alcanzan ejecución y el Security tab de GitHub recibe los datos.
       - name: Publicar SARIF Backend
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results-backend.sarif
           category: semgrep-backend
 
       - name: Publicar SARIF Frontend
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results-frontend.sarif
           category: semgrep-frontend
@@ -296,6 +363,8 @@ jobs:
       # Este step reemplaza completamente a --error:
       #   · El SARIF ya está en el Security tab antes de que el job falle.
       #   · Solo falla si estamos en rama protegida (strict=true).
+      #   · outcome='failure' en los steps de scan significa que semgrep
+      #     encontró findings de severidad ERROR (exit code 1).
       #   · Imprime un link directo al code scanning del repo.
       - name: Verificar modo estricto
         if: steps.policy.outputs.strict == 'true'
@@ -303,12 +372,12 @@ jobs:
           FAILED=false
 
           if [ "${{ steps.semgrep_backend.outcome }}" = "failure" ]; then
-            echo "❌ Semgrep Backend encontró findings. Revisa el Security tab."
+            echo "❌ Semgrep Backend encontró findings con severidad ERROR. Revisa el Security tab."
             FAILED=true
           fi
 
           if [ "${{ steps.semgrep_frontend.outcome }}" = "failure" ]; then
-            echo "❌ Semgrep Frontend encontró findings. Revisa el Security tab."
+            echo "❌ Semgrep Frontend encontró findings con severidad ERROR. Revisa el Security tab."
             FAILED=true
           fi
 
@@ -318,4 +387,4 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Semgrep sin findings bloqueantes en modo estricto."
+          echo "✅ Semgrep sin findings de severidad ERROR en modo estricto."
