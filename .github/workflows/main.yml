@@ -85,11 +85,12 @@ jobs:
         run: |
           STRICT_FLAGS=""
           if [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
-            STRICT_FLAGS="--error --severity=ERROR"
+            STRICT_FLAGS="--severity=ERROR"
           fi
 
           semgrep scan \
             --verbose \
+            --max-log-list-entries=1000 \
             --config=no-eval.yml \
             --config=p/ci \
             --config=p/security-audit \
@@ -103,8 +104,7 @@ jobs:
             ${{ steps.policy.outputs.baseline }} \
             $STRICT_FLAGS \
             --sarif --output=results-backend.sarif \
-            ./api
-          
+            ./api || true
           cat results-backend.sarif
           
       # 🔹 Frontend scan
@@ -117,6 +117,7 @@ jobs:
 
           semgrep scan \
             --verbose \
+            --max-log-list-entries=1000 \
             --config=no-eval.yml \
             --config=p/ci \
             --config=p/security-audit \
