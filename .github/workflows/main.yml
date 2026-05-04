@@ -1,20 +1,3 @@
-# ============================================================
-#  CI Pipeline — bitfive monorepo
-#  Backend : /api  (TypeScript / Node.js)
-#  Frontend: /app  (JavaScript / React)
-#
-#  Jobs
-#  ├── lint    → matrix: [backend, frontend]
-#  ├── build   → matrix: [backend, frontend]
-#  └── semgrep → SAST dividido por path
-#
-#  Política Semgrep
-#  ├── PR → develop   : baseline scan (solo findings nuevos)
-#  ├── push develop   : full scan (visible en Security tab)
-#  ├── PR → main      : full scan estricto (bloquea si hay ERROR)
-#  └── push main / release/* / hotfix/* : full scan estricto
-# ============================================================
-
 name: CI
 
 on:
@@ -51,11 +34,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      
       - name: Fix git ownership
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      # Calcula si el scan debe ser estricto o usar baseline según la rama
+      # 🔹 Regla inline para detectar eval
+      - name: Crear regla Semgrep (no-eval)
+        run: |
+          cat <<'EOF' > no-eval.yml
+          rules:
+            - id: no-eval-usage
+              name: Detectar uso de eval()
+              message: "Evita usar eval(), puede introducir vulnerabilidades (RCE)."
+              severity: ERROR
+              languages:
+                - javascript
+                - typescript
+              pattern: eval($X)
+              metadata:
+                category: security
+                cwe: "CWE-95"
+          EOF
+
+      # 🔹 Determinar política
       - name: Determinar política
         id: policy
         run: |
@@ -74,14 +74,13 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request" ] \
           && [ "${{ github.base_ref }}" = "develop" ]; then
-            # --baseline-commit reemplaza a --baseline-ref en semgrep >= 1.x
             BASELINE="--baseline-commit=origin/develop"
           fi
 
           echo "strict=$STRICT"     >> $GITHUB_OUTPUT
           echo "baseline=$BASELINE" >> $GITHUB_OUTPUT
 
-      # Packs: p/ci · p/security-audit · p/secrets · p/typescript · p/nodejs
+      # 🔹 Backend scan
       - name: Semgrep · Backend (/api)
         run: |
           STRICT_FLAGS=""
@@ -91,15 +90,7 @@ jobs:
 
           semgrep scan \
             --verbose \
-              --config <(cat <<'EOF'
-                rules:
-                  - id: no-eval-usage
-                    message: "Evita usar eval(), riesgo de RCE"
-                    severity: ERROR
-                    languages: [javascript, typescript]
-                    pattern: eval($X)
-                EOF
-                ) \
+            --config=no-eval.yml \
             --config=p/ci \
             --config=p/security-audit \
             --config=p/secrets \
@@ -114,7 +105,7 @@ jobs:
             --sarif --output=results-backend.sarif \
             ./api
 
-      # Packs: p/ci · p/security-audit · p/secrets · p/javascript · p/react
+      # 🔹 Frontend scan
       - name: Semgrep · Frontend (/app)
         run: |
           STRICT_FLAGS=""
@@ -124,6 +115,7 @@ jobs:
 
           semgrep scan \
             --verbose \
+            --config=no-eval.yml \
             --config=p/ci \
             --config=p/security-audit \
             --config=p/secrets \
