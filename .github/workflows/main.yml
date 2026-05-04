@@ -214,6 +214,8 @@ jobs:
         with:
           sarif_file: results-backend.sarif
           category: semgrep-backend
+          ref: ${{ github.ref }}
+          sha: ${{ github.sha }}
 
       - name: Publicar SARIF Frontend
         if: always()
@@ -221,6 +223,8 @@ jobs:
         with:
           sarif_file: results-frontend.sarif
           category: semgrep-frontend
+          ref: ${{ github.ref }}
+          sha: ${{ github.sha }}
 
       - name: Verificar resultados · Backend
         if: always()
