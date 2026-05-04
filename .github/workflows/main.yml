@@ -82,10 +82,11 @@ jobs:
 
       # 🔹 Backend scan
       - name: Semgrep · Backend (/api)
+        continue-on-error: true
         run: |
           STRICT_FLAGS=""
           if [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
-            STRICT_FLAGS="--severity=ERROR"
+            STRICT_FLAGS="--error --severity=ERROR"
           fi
 
           semgrep scan \
@@ -104,8 +105,7 @@ jobs:
             ${{ steps.policy.outputs.baseline }} \
             $STRICT_FLAGS \
             --sarif --output=results-backend.sarif \
-            ./api || true
-          cat results-backend.sarif
+            ./api
           
       # 🔹 Frontend scan
       - name: Semgrep · Frontend (/app)

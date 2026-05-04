@@ -8,10 +8,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const token = "Bearer FAKEDEMOTOKEN0123456789";
-
 // Simple route
 app.get("/", (req, res) => {
+  eval("console.log('test')");
   res.json({ message: "Welcome to the Movie Review API." });
 });
 
