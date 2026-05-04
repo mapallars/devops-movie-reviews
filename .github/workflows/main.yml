@@ -187,21 +187,17 @@ jobs:
       # ── Semgrep Backend (/api) ───────────────────────────────────────
       # Packs: p/ci · p/security-audit · p/secrets · p/typescript · p/nodejs
       #
-      # --verbose         : log detallado de reglas aplicadas y archivos procesados.
-      # --severity=ERROR  : filtra el output y el SARIF a findings de nivel ERROR.
-      # sin --error       : permite que el SARIF siempre se genere y publique.
-      #                     Si hay findings ERROR, semgrep exits con código 1,
-      #                     lo que pone el step en outcome='failure'.
-      # continue-on-error : el job NO falla aquí. El fallo real se controla en
-      #                     "Verificar modo estricto", después del SARIF upload.
-      # .semgrepignore    : Semgrep lo lee automáticamente desde $GITHUB_WORKSPACE.
-      #                     Coloca el archivo en la raíz del repo.
+      # --verbose        : log detallado de reglas aplicadas y archivos procesados.
+      # --severity=ERROR : filtra el output y el SARIF a findings de nivel ERROR.
+      # sin --error      : el SARIF siempre se genera; el exit code se captura
+      #                    manualmente y se propaga solo en modo estricto.
+      # .semgrepignore   : Semgrep lo lee automáticamente desde $GITHUB_WORKSPACE.
+      #                    Coloca el archivo en la raíz del repo.
       - name: Semgrep · Backend (/api)
-        id: semgrep_backend
-        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
+          set +e
           semgrep scan \
             --verbose \
             --config=p/ci \
@@ -218,15 +214,22 @@ jobs:
             --severity=ERROR \
             --sarif --output=results-backend.sarif \
             ./api
+          SEMGREP_EXIT=$?
+          set -e
+
+          if [ "$SEMGREP_EXIT" != "0" ]; then
+            echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
+          fi
+
+          [ "${{ steps.policy.outputs.strict }}" = "true" ] && exit $SEMGREP_EXIT || exit 0
 
       # ── Semgrep Frontend (/app) ──────────────────────────────────────
       # Packs: p/ci · p/security-audit · p/secrets · p/javascript · p/react
       - name: Semgrep · Frontend (/app)
-        id: semgrep_frontend
-        continue-on-error: true
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         run: |
+          set +e
           semgrep scan \
             --verbose \
             --config=p/ci \
@@ -247,10 +250,18 @@ jobs:
             --severity=ERROR \
             --sarif --output=results-frontend.sarif \
             ./app
+          SEMGREP_EXIT=$?
+          set -e
+
+          if [ "$SEMGREP_EXIT" != "0" ]; then
+            echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
+          fi
+
+          [ "${{ steps.policy.outputs.strict }}" = "true" ] && exit $SEMGREP_EXIT || exit 0
 
       # ── Publicar SARIF — siempre, incluso si los scans fallaron ──────
-      # Con continue-on-error en los steps de scan, estos steps siempre
-      # alcanzan ejecución y el Security tab de GitHub recibe los datos.
+      # if: always() garantiza que el Security tab reciba los datos
+      # independientemente del resultado de los steps de scan.
       - name: Publicar SARIF Backend
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -264,33 +275,3 @@ jobs:
         with:
           sarif_file: results-frontend.sarif
           category: semgrep-frontend
-
-      # ── Enforce modo estricto (DESPUÉS de publicar SARIF) ───────────
-      # Este step reemplaza completamente a --error:
-      #   · El SARIF ya está en el Security tab antes de que el job falle.
-      #   · Solo falla si estamos en rama protegida (strict=true).
-      #   · outcome='failure' en los steps de scan significa que semgrep
-      #     encontró findings de severidad ERROR (exit code 1).
-      #   · Imprime un link directo al code scanning del repo.
-      - name: Verificar modo estricto
-        if: steps.policy.outputs.strict == 'true'
-        run: |
-          FAILED=false
-
-          if [ "${{ steps.semgrep_backend.outcome }}" = "failure" ]; then
-            echo "❌ Semgrep Backend encontró findings con severidad ERROR. Revisa el Security tab."
-            FAILED=true
-          fi
-
-          if [ "${{ steps.semgrep_frontend.outcome }}" = "failure" ]; then
-            echo "❌ Semgrep Frontend encontró findings con severidad ERROR. Revisa el Security tab."
-            FAILED=true
-          fi
-
-          if [ "$FAILED" = "true" ]; then
-            echo ""
-            echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
-            exit 1
-          fi
-
-          echo "✅ Semgrep sin findings de severidad ERROR en modo estricto."
