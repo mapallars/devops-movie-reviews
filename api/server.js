@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const password = "abcd1234EFGHIJKLM*()!@@#";
+const token = "Bearer FAKEDEMOTOKEN0123456789";
 
 // Simple route
 app.get("/", (req, res) => {
