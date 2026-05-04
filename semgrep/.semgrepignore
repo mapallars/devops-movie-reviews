@@ -1,0 +1,70 @@
+# ----------------------------------------
+# 📦 Dependencias
+# ----------------------------------------
+node_modules/
+**/node_modules/
+
+# ----------------------------------------
+# 🏗️ Builds / outputs
+# ----------------------------------------
+dist/
+build/
+coverage/
+.next/
+out/
+.vite/
+.turbo/
+
+# ----------------------------------------
+# 🧪 Tests y mocks (opcional)
+# ----------------------------------------
+**/*.test.*
+**/*.spec.*
+**/__tests__/
+**/__mocks__/
+
+# ----------------------------------------
+# 📄 Archivos generados
+# ----------------------------------------
+*.min.js
+*.bundle.js
+*.map
+
+# ----------------------------------------
+# 🧾 Logs
+# ----------------------------------------
+*.log
+
+# ----------------------------------------
+# 🔐 Archivos de entorno (ya cubiertos por p/secrets)
+# pero evitamos ruido duplicado
+# ----------------------------------------
+.env
+.env.*
+!.env.example
+
+# ----------------------------------------
+# 🐳 Docker / infra (solo si no quieres analizarlos aquí)
+# (si usas p/ci, puedes quitar esto)
+# ----------------------------------------
+# Dockerfile*
+# docker-compose*
+
+# ----------------------------------------
+# 📁 Archivos de configuración pesados
+# ----------------------------------------
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ----------------------------------------
+# 🧰 Herramientas
+# ----------------------------------------
+.eslintcache
+.cache/
+
+# ----------------------------------------
+# 📦 Monorepo extra (por si agregas más apps)
+# ----------------------------------------
+**/dist/
+**/build/
