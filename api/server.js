@@ -10,7 +10,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Simple route
 app.get("/", (req, res) => {
-  eval('console.log("eval")');
   res.json({ message: "Welcome to the Movie Review API." });
 });
 
