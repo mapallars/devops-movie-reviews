@@ -102,10 +102,11 @@ jobs:
             --exclude='*.min.js' \
             ${{ steps.policy.outputs.baseline }} \
             $STRICT_FLAGS \
-            --json --output=results-backend.json \
             --sarif --output=results-backend.sarif \
             ./api
-
+          
+          cat results-backend.sarif
+          
       # 🔹 Frontend scan
       - name: Semgrep · Frontend (/app)
         run: |
