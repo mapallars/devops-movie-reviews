@@ -117,13 +117,12 @@ jobs:
       # Packs: p/ci · p/security-audit · p/secrets · p/typescript · p/nodejs
       #
       # --verbose        : log detallado de reglas aplicadas y archivos procesados.
-      # --severity=ERROR : filtra el output y el SARIF a findings de nivel ERROR.
-      # sin --error      : el SARIF siempre se genera antes de decidir el exit.
-      #                    El patrón `cmd && VAR=0 || VAR=$?` captura el exit code
-      #                    de forma compatible con -eo pipefail del runner.
-      #                    El step solo falla si strict=true y hubo findings.
+      # --severity=ERROR : filtra el SARIF a findings de nivel ERROR únicamente.
+      # || true          : semgrep sin --error siempre sale con 0; el || true
+      #                    garantiza que el SARIF se genere y el script no aborte.
+      # Inspección SARIF : se cuenta results[] en el SARIF para detectar findings
+      #                    reales y fallar el step en modo estricto.
       # .semgrepignore   : Semgrep lo lee automáticamente desde $GITHUB_WORKSPACE.
-      #                    Coloca el archivo en la raíz del repo.
       - name: Semgrep · Backend (/api)
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
@@ -143,14 +142,20 @@ jobs:
             ${{ steps.policy.outputs.baseline }} \
             --severity=ERROR \
             --sarif --output=results-backend.sarif \
-            ./api \
-          && SEMGREP_EXIT=0 || SEMGREP_EXIT=$?
+            ./api || true
 
-          if [ "$SEMGREP_EXIT" != "0" ]; then
+          FINDINGS=$(python3 -c "
+          import json
+          sarif = json.load(open('results-backend.sarif'))
+          print(sum(len(r.get('results', [])) for r in sarif.get('runs', [])))
+          ")
+
+          echo "Findings backend: $FINDINGS"
+
+          if [ "$FINDINGS" -gt "0" ] && [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
+            echo "❌ Semgrep Backend: $FINDINGS finding(s) con severidad ERROR."
             echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
-            if [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
-              exit 1
-            fi
+            exit 1
           fi
 
       # ── Semgrep Frontend (/app) ──────────────────────────────────────
@@ -178,14 +183,20 @@ jobs:
             ${{ steps.policy.outputs.baseline }} \
             --severity=ERROR \
             --sarif --output=results-frontend.sarif \
-            ./app \
-          && SEMGREP_EXIT=0 || SEMGREP_EXIT=$?
+            ./app || true
 
-          if [ "$SEMGREP_EXIT" != "0" ]; then
+          FINDINGS=$(python3 -c "
+          import json
+          sarif = json.load(open('results-frontend.sarif'))
+          print(sum(len(r.get('results', [])) for r in sarif.get('runs', [])))
+          ")
+
+          echo "Findings frontend: $FINDINGS"
+
+          if [ "$FINDINGS" -gt "0" ] && [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
+            echo "❌ Semgrep Frontend: $FINDINGS finding(s) con severidad ERROR."
             echo "👉 Code scanning: https://github.com/${{ github.repository }}/security/code-scanning"
-            if [ "${{ steps.policy.outputs.strict }}" = "true" ]; then
-              exit 1
-            fi
+            exit 1
           fi
 
       # ── Publicar SARIF — siempre, incluso si los scans fallaron ──────
